@@ -4,11 +4,13 @@ import tweepy
 import pprint
 import os
 from ConfigParser import SafeConfigParser
-from wand.image import Image
+#from wand.image import Image
+from PIL import Image
+from StringIO import StringIO
 import sqlite3 as sqlite
 import datetime
 import re
-
+import requests
 
 def create_tables(db_name):
     with sqlite.connect(db_name) as con:
@@ -64,17 +66,12 @@ def download_image(image_url, today):
     image_file = image_file_location(image_url, today)
     if not os.path.isfile(image_file):
         try:
-            response = urlopen(image_url)
-            print response
+            response = requests.get(image_url)
             try:
-                with Image(file=response) as img:
-                    img.format = 'jpeg'
-                    img.save(filename=image_file)
-                    print "saved " + image_file
-            except:
-                # failure doesn't really matter, just move on to the next
-                pass
-        except:
+                Image.open(StringIO(response.content)).save(image_file)
+            except IOError, e:
+                print "can't save" + image_file + ": " + e
+        except: 
             pass
             
     return image_file
@@ -83,8 +80,8 @@ def download_image(image_url, today):
 
 # 
 DB_NAME = "trends.db"
-PICTURES = 2 # 20
-MAX_TRIES_PER_TREND = 2  # 10
+PICTURES = 20 # 20
+MAX_TRIES_PER_TREND = 10  # 10
 
 #
 parser = SafeConfigParser()
@@ -107,23 +104,23 @@ if not os.path.isfile(DB_NAME):
 # Get top 10 global trends
 trends = api.trends_place(1)
 # For each trend, try to get PICTURES posted w/ tweets
+trend_rank = 1
 for t in trends[0]["trends"]:
 
     pictures = list()
     max_id = 0
     tries = 0
     tweet_number = 1
-    trend_rank = 1
     trend_id = 0
 
     with sqlite.connect(DB_NAME) as con:
         cur = con.cursor()
         sql = "insert into trends (trend_name, trend_rank, created) values (?,?,?)"
-        cur.execute(sql, [t["name"], trend_rank, datetime.date.today().strftime("%Y-%m-%d %H:%m:%S")])
+        cur.execute(sql, [t["name"], trend_rank, datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%m:%S")])
 
         trend_id = cur.lastrowid
 
-    while len(pictures) < PICTURES and tries < MAX_TRIES_PE_TREND:
+    while len(pictures) < PICTURES and tries < MAX_TRIES_PER_TREND:
 
         #print str(tries) + "\t" + t["name"]
 
@@ -138,12 +135,9 @@ for t in trends[0]["trends"]:
 
                     image_url   = m.entities["media"][0]["media_url"]
                     image_file  = download_image(image_url, today)
-                    #c           = datetime.datetime.strptime(m.created_at, "%a %b %d %H:%m:%S +0000 %Y")
                     created     = m.created_at.strftime("%Y-%m-%d %H:%m:%S")
                     tweet       = m.text
                     coords      = m.coordinates["coordinates"] if m.coordinates else ''
-                    print m.coordinates
-                    print "coords: " + coords
                     author      = m.author.screen_name
 
                     with sqlite.connect(DB_NAME) as con:
@@ -153,14 +147,13 @@ for t in trends[0]["trends"]:
                             (trend_id, tweet, author, created, image_url, image_file, coordinates, tweet_number)
                             values
                             (?, ?, ?, ?, ?, ?, ?, ?)"""
-                        values = [trend_id, tweet, author, created, image_url, image_file, coords, tweet_number]
+                        values = [trend_id, tweet, author, created, image_url, image_file, str(coords), tweet_number]
                         #print values
                         cur.execute(sql, values)
 
                     pictures.append(m.entities["media"][0]["media_url"])
             tweet_number += 1
         max_id = m.id
-    tries += 1
-    print t["name"]
+        tries += 1
     trend_rank += 1
 
