@@ -4,7 +4,6 @@ import tweepy
 import pprint
 import os
 from ConfigParser import SafeConfigParser
-#from wand.image import Image
 from PIL import Image
 from StringIO import StringIO
 import sqlite3 as sqlite
@@ -116,7 +115,7 @@ for t in trends[0]["trends"]:
     with sqlite.connect(DB_NAME) as con:
         cur = con.cursor()
         sql = "insert into trends (trend_name, trend_rank, created) values (?,?,?)"
-        cur.execute(sql, [t["name"], trend_rank, datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%m:%S")])
+        cur.execute(sql, [t["name"], trend_rank, datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")])
 
         trend_id = cur.lastrowid
 
@@ -135,7 +134,7 @@ for t in trends[0]["trends"]:
 
                     image_url   = m.entities["media"][0]["media_url"]
                     image_file  = download_image(image_url, today)
-                    created     = m.created_at.strftime("%Y-%m-%d %H:%m:%S")
+                    created     = m.created_at.strftime("%Y-%m-%d %H:%M:%S")
                     tweet       = m.text
                     coords      = m.coordinates["coordinates"] if m.coordinates else ''
                     author      = m.author.screen_name
