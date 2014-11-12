@@ -1,49 +1,166 @@
 #!/usr/bin/env python -tt
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
 import tweepy
 import pprint
+import os
 from ConfigParser import SafeConfigParser
+from wand.image import Image
+import sqlite3 as sqlite
+import datetime
+import re
 
+
+def create_tables(db_name):
+    with sqlite.connect(db_name) as con:
+        cur = con.cursor()
+        cur.execute("drop table if exists trends")
+        sql = """
+        create table trends (
+            id integer primary key,
+            trend_name text,
+            trend_rank integer,
+            created text
+        )"""
+        cur.execute(sql)
+
+        cur.execute("drop table if exists pictures")
+        sql = """
+        create table pictures (
+            id integer primary key,
+            trend_id integer,
+            tweet text,
+            author text,
+            created text,
+            image_url text,
+            image_file text,
+            coordinates text,
+            tweet_number integer
+        )"""
+        cur.execute(sql)
+
+
+def mkdir_p(path):
+    # 'mkdir -p' functionality taken from: http://stackoverflow.com/a/600612
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        #if exc.errno == errno.EEXIST and os.path.isdir(path):
+        if exc.errno and os.path.isdir(path):
+            pass
+        else: raise
+
+
+def image_file_location(image_url, today):
+    # turns a twitter image url into a location on disk
+    # http://pbs.twimg.com/media/B2HS2lrIAAEOdZs.jpg
+    # into 
+    # images/YYYY-MM-DD/B2HS2lrIAAEOdZs.jpg
+    m = re.search(r'.*/(.*?)$', image_url)
+    return 'images/' + today.strftime("%Y-%m-%d") + '/' + m.group(1)
+
+
+def download_image(image_url, today):
+    mkdir_p ('images/' + today.strftime("%Y-%m-%d"))
+    image_file = image_file_location(image_url, today)
+    if not os.path.isfile(image_file):
+        try:
+            response = urlopen(image_url)
+            print response
+            try:
+                with Image(file=response) as img:
+                    img.format = 'jpeg'
+                    img.save(filename=image_file)
+                    print "saved " + image_file
+            except:
+                # failure doesn't really matter, just move on to the next
+                pass
+        except:
+            pass
+            
+    return image_file
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+# 
+DB_NAME = "trends.db"
+PICTURES = 2 # 20
+MAX_TRIES_PER_TREND = 2  # 10
+
+#
 parser = SafeConfigParser()
 parser.read('config.ini')
 
+# get tweepy
 auth = tweepy.OAuthHandler(parser.get('twitter', 'consumer_key'), parser.get('twitter', 'consumer_secret'))
 auth.set_access_token(parser.get('twitter', 'access_token'), parser.get('twitter', 'access_token_secret'))
 api = tweepy.API(auth)
 
-pp = pprint.PrettyPrinter(indent=2, depth=8)
+#pp = pprint.PrettyPrinter(indent=2, depth=8)
+
+today = datetime.date.today()
+
+# create tables if this is the first time run
+if not os.path.isfile(DB_NAME):
+    create_tables(DB_NAME)
+
 
 # Get top 10 global trends
 trends = api.trends_place(1)
-
-# For each trend, try to get 20 images posted w/ tweets
+# For each trend, try to get PICTURES posted w/ tweets
 for t in trends[0]["trends"]:
 
-  pictures = list()
-  max_id = 0
-  max_tries = 10
-  tries = 0
+    pictures = list()
+    max_id = 0
+    tries = 0
+    tweet_number = 1
+    trend_rank = 1
+    trend_id = 0
 
-  while len(pictures) < 20 and tries < max_tries:
+    with sqlite.connect(DB_NAME) as con:
+        cur = con.cursor()
+        sql = "insert into trends (trend_name, trend_rank, created) values (?,?,?)"
+        cur.execute(sql, [t["name"], trend_rank, datetime.date.today().strftime("%Y-%m-%d %H:%m:%S")])
 
-    print str(tries) + "\t" + t["name"]
+        trend_id = cur.lastrowid
 
-    if max_id > 0:
-      messages = api.search(q = t["name"], since_id = max_id)
-    else:
-      messages = api.search(q = t["name"])
+    while len(pictures) < PICTURES and tries < MAX_TRIES_PE_TREND:
 
-    for m in messages:
-      #print "\t" + m.text
-      #print m.coordinates, almost never there, we really want m.corrdinates["coordinates"] I think
-      #print m.author.screen_name
-      #print m.created_at, UTC time in this format: "Wed Aug 27 13:08:45 +0000 2008"
+        #print str(tries) + "\t" + t["name"]
 
-      if "media" in m.entities:
-        if m.entities["media"][0]["media_url"]:
-          print "\t" + m.entities["media"][0]["media_url"]
-          # images must be unique? A lot of duplicates happen through re-tweets
-          pictures.append(m.entities["media"][0]["media_url"])
+        if max_id > 0:
+            messages = api.search(q = t["name"], since_id = max_id)
+        else:
+            messages = api.search(q = t["name"])
 
-      max_id = m.id
+        for m in messages:
+            if "media" in m.entities:
+                if m.entities["media"][0]["media_url"]:
+
+                    image_url   = m.entities["media"][0]["media_url"]
+                    image_file  = download_image(image_url, today)
+                    #c           = datetime.datetime.strptime(m.created_at, "%a %b %d %H:%m:%S +0000 %Y")
+                    created     = m.created_at.strftime("%Y-%m-%d %H:%m:%S")
+                    tweet       = m.text
+                    coords      = m.coordinates["coordinates"] if m.coordinates else ''
+                    print m.coordinates
+                    print "coords: " + coords
+                    author      = m.author.screen_name
+
+                    with sqlite.connect(DB_NAME) as con:
+                        cur = con.cursor()
+                        sql = """
+                            insert into pictures 
+                            (trend_id, tweet, author, created, image_url, image_file, coordinates, tweet_number)
+                            values
+                            (?, ?, ?, ?, ?, ?, ?, ?)"""
+                        values = [trend_id, tweet, author, created, image_url, image_file, coords, tweet_number]
+                        #print values
+                        cur.execute(sql, values)
+
+                    pictures.append(m.entities["media"][0]["media_url"])
+            tweet_number += 1
+        max_id = m.id
     tries += 1
+    print t["name"]
+    trend_rank += 1
 
