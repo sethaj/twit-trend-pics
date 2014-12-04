@@ -1,3 +1,6 @@
 config.ini
 images/
 trends.db
+.DS_Store
+pictures/
+temp-pictures/

@@ -1,4 +1,5 @@
 #!/usr/bin/env python -tt
+# coding=utf8
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
 from wand.image import Image
 from wand.color import Color
@@ -7,9 +8,10 @@ import os
 import operator
 import random
 import glob
+import datetime
 
-RESULTS_STORE = '/home/seth/apps/twit-trend-pics/pictures'
-IMAGE_STORE = '/home/seth/apps/twit-trend-pics/pictures/store'
+RESULTS_STORE = '/Users/seth/SI618_project/twit-trend-pics/pictures'
+IMAGE_STORE = '/Users/seth/SI618_project/twit-trend-pics/temp-pictures'
 
 
 def mkdir_p(path):
@@ -43,6 +45,7 @@ This matters when we start applying random filters
 '''
 def get_canvas_background_color(step, images):
     mkdir_p(RESULTS_STORE + '/' + step)
+    mkdir_p(IMAGE_STORE + '/' + step)
     colors = dict()
     i=0
     for image in images:
@@ -53,7 +56,7 @@ def get_canvas_background_color(step, images):
             im.format = 'ppm'
             # put these in the store for later
             small = IMAGE_STORE + '/' + step + '/' + 'small-' + str(i) + '.ppm'
-            print small
+            #print small
             try:
                 im.save(filename=small)
             except Exception as e:
@@ -116,16 +119,28 @@ def return_images(cur, sql):
     return images
 
 
-def first(cur):
+def first_good(cur):
     # get first MTVStars
     return return_images(cur, """select image_file from
         pictures, trends
         where
         trends.trend_name = '#MTVStars'
         and
-        trends.id = pictures.trend_id LIMIT 20""")
+        trends.id = pictures.trend_id 
+    LIMIT 20""")
 
-def second(cur):
+
+def first_bad(cur):
+    return return_images(cur, """select image_file from
+        pictures, trends
+        where
+        trends.trend_name = 'JustinBieber'
+        and trends.id = pictures.trend_id 
+        LIMIT 20
+    """)
+
+
+def second_good(cur):
     return return_images(cur, """select image_file from 
         pictures, trends
         where
@@ -134,6 +149,38 @@ def second(cur):
         trends.trend_name = '#NightChangesVideo'
         and
         trends.created = '2014-11-21 17:00:01'
+    """)
+
+
+def second_bad(cur):
+    return return_images(cur, """select image_file from
+        pictures, trends
+        where
+        trends.id = pictures.trend_id
+        and
+        trends.trend_name = 'SanaVereceğim Değer'
+        and
+        trends.created = '2014-11-14 17:00:26'
+    """)
+
+
+def third_good(cur):
+    return return_images(cur, """select image_file from
+        pictures
+        where
+        author = 'yumurtadelisi'
+        limit 20
+    """)
+
+
+def third_bad(cur):
+    # abdllhonl004               88            11               1
+    # 88 posts in 11 trends but only 1 unique picture
+    return return_images(cur, """select image_file from
+        pictures
+        where
+        author = 'abdllhonl004'
+        limit 20
     """)
 
 
@@ -164,7 +211,7 @@ def make_image(step, images):
 
         canvas.format = 'jpeg'
         #canvas_name = get_final_canvas_name(RESULTS_STORE + '/' + step + '/' + step)
-        canvas_name = RESULTS_STORE + '/' + step + '/' + step
+        canvas_name = RESULTS_STORE + '/' + step + '/' + step + '_' + datetime.datetime.today().strftime("%Y-%m-%d_%H:%m:%S")
         canvas.save(filename=canvas_name + '.jpg')
         print 'wrote: ' + canvas_name + '.jpg'
 
@@ -174,10 +221,15 @@ def main():
     with sqlite.connect('trends.db') as con:
         cur = con.cursor()
 
-        make_image(str(i), first(cur))
-        i += 1
-        make_image(str(i), second(cur))
 
+        make_image(str(i) + "good", first_good(cur))
+        make_image(str(i) + "bad",  first_bad(cur))
+        i += 1
+        make_image(str(i) + "good", second_good(cur))
+        make_image(str(i) + "bad",  second_bad(cur))
+        i += 1
+        make_image(str(i) + "good", third_good(cur))
+        make_image(str(i) + "bad",  third_bad(cur))
 
 
     print "done"
