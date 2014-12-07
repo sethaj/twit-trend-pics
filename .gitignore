@@ -4,3 +4,4 @@ trends.db
 .DS_Store
 pictures/
 temp-pictures/
+nohup*

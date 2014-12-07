@@ -10,8 +10,10 @@ import random
 import glob
 import datetime
 
-RESULTS_STORE = '/Users/seth/SI618_project/twit-trend-pics/pictures'
-IMAGE_STORE = '/Users/seth/SI618_project/twit-trend-pics/temp-pictures'
+#RESULTS_STORE = '/Users/seth/SI618_project/twit-trend-pics/pictures'
+RESULTS_STORE = "/home/sethajoh/apps/twit-trend-pics/pictures/"
+#IMAGE_STORE = '/Users/seth/SI618_project/twit-trend-pics/temp-pictures'
+IMAGE_STORE = '/home/sethajoh/apps/twit-trend-pics/temp-pictures'
 
 
 def mkdir_p(path):
@@ -165,7 +167,7 @@ def second_bad(cur):
 
 
 def third_good(cur):
-    return return_images(cur, """select image_file from
+    return return_images(cur, """select distinct(image_file) from
         pictures
         where
         author = 'yumurtadelisi'
