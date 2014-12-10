@@ -10,10 +10,10 @@ import random
 import glob
 import datetime
 
-#RESULTS_STORE = '/Users/seth/SI618_project/twit-trend-pics/pictures'
-RESULTS_STORE = "/home/sethajoh/apps/twit-trend-pics/pictures/"
-#IMAGE_STORE = '/Users/seth/SI618_project/twit-trend-pics/temp-pictures'
-IMAGE_STORE = '/home/sethajoh/apps/twit-trend-pics/temp-pictures'
+RESULTS_STORE = '/Users/seth/SI618_project/twit-trend-pics/pictures'
+#RESULTS_STORE = "/home/sethajoh/apps/twit-trend-pics/pictures/"
+IMAGE_STORE = '/Users/seth/SI618_project/twit-trend-pics/temp-pictures'
+#IMAGE_STORE = '/home/sethajoh/apps/twit-trend-pics/temp-pictures'
 
 
 def mkdir_p(path):
@@ -186,6 +186,14 @@ def third_bad(cur):
     """)
 
 
+def fourth(cur):
+    return return_images(cur, """select distinct(image_file) from
+        pictures
+        where
+        (author = 'trendinaliaUS' or author = 'trendinaliaGB' or author = '_swagross')
+    """)
+
+
 def make_image(step, images):
 
     canvas_size     = get_biggest_image(images)
@@ -223,7 +231,6 @@ def main():
     with sqlite.connect('trends.db') as con:
         cur = con.cursor()
 
-
         make_image(str(i) + "good", first_good(cur))
         make_image(str(i) + "bad",  first_bad(cur))
         i += 1
@@ -232,6 +239,8 @@ def main():
         i += 1
         make_image(str(i) + "good", third_good(cur))
         make_image(str(i) + "bad",  third_bad(cur))
+        i += 1
+        make_image(str(i) + "ok", fourth(cur))
 
 
     print "done"
