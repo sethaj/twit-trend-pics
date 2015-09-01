@@ -7,6 +7,6 @@ you obviously want to see the images that were posted for those trends,
 on that day, 
 so you won't miss a justin bieber picture.
 
-Daily pictutes: http://saj.me:8000/
+Daily pictures: http://saj.me:8000/
 
 
