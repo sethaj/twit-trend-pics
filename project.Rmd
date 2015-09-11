@@ -1,0 +1,189 @@
+---
+title: "Project"
+author: "Seth Johnson"
+date: "November 24, 2014"
+output: html_document
+---
+
+```{r echo=FALSE}
+setwd("/Users/seth/Dropbox/SI618/project/")
+library(DBI)
+library(RSQLite)
+library(plyr)
+library(ggplot2)
+library(stringr)
+library(maps)
+library(cluster)
+library(gplots)
+
+driver<-dbDriver("SQLite")
+con<-dbConnect(driver, dbname = "trends.2636.db")
+dbIsValid(con)
+
+
+```
+
+###1. Would more popular, higher ranked trends produce more interesting collages?
+
+Get a listing of all the trends and rankings and  graph them. Pull out the
+consistently highest ranking trends. Get images for these trends at their high points,
+and process.
+
+```{r echo=FALSE}
+
+just_trends = dbGetQuery(con, "select * from trends")
+t <- ddply(just_trends, c("trend_name"),
+           summarize,
+           popular = length(trend_name))
+
+t = t[order(t$popular, decreasing=TRUE),]
+t2 = head(t, 10)
+
+t3 <- merge(just_trends, t2, by=c("trend_name"))
+#t3
+ 
+p <- ggplot(t3, aes(as.POSIXlt(created, "%Y-%m-%d %H:%M:%S"), reorder(trend_rank, popular), colour=reorder(trend_name, -popular), group=trend_name)) +
+  layer(geom="point") +
+  layer(stat="smooth", se=FALSE) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle("Top Trends between 11/12 and 11/24") +
+  xlab("Trend Date/Time") + 
+  ylab("Trend Rank") + 
+  labs(colour = "Top Trends") 
+
+print(p)
+```
+
+###2. Would trends that had more image tweets per total tweets (higher image tweet ratio) produce more interesting collages?
+
+Get a listing of each trend, at each time, and the number of tweets to tweets with
+pictures ratio. Graph the result, pull highest ratio trends per time, get their associated images and process.
+
+```{r echo=FALSE, warning=FALSE}
+trends = dbGetQuery(con, "select * from trends, pictures where trends.id = pictures.trend_id")
+t <- ddply(trends, c("trend_name", "created"),
+           summarize,
+           total_calls_for_pics = sum(tweet_number),
+           total_pics = length(image_url),
+           unique_pics = length(unique(image_url)))
+
+# we only want trends with at least 20 pictures
+t <- subset(t, total_pics >= 20)
+
+# most pics per trend per time
+tm <- t[order(t$total_calls_for_pics, decreasing=FALSE),]
+
+# mean total calls pre trend per time to get 20 pics just for fun
+# mean(t$total_calls_for_pics)
+
+tm10 <- head(tm, 10)
+
+
+# most unique pics per trend per time
+tu <- tm[order(tm$unique_pics, decreasing=TRUE),]
+head(tu, 10)
+
+
+# fewer calls per 20 pics means more pictures were posted
+p <- ggplot(tm10, aes(reorder(paste(trend_name, created, sep="\n"), total_calls_for_pics), 
+                    total_calls_for_pics),
+            colour=trend_name) +
+  geom_histogram(stat="identity", alpha = I(50/100)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ylab("Lowest Tweets for 20 Images") + 
+  xlab("Trend and Time") + 
+  ggtitle("Trends and Times with Fewest Tweets\nfor the Most Images (lower is better)")
+print(p)
+
+# most unique pics out of fewest calls per 20 pics
+p <- ggplot(tm10, aes(reorder(paste(trend_name, created, sep="\n"), unique_pics), 
+                    unique_pics),
+            colour=trend_name) +
+  geom_histogram(stat="identity", alpha = I(50/100)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  xlab("Trend and Time") +
+  ylab("Unique Images from\nLowest Tweets for 20 Images") +
+  ggtitle("Unique Pictures Posted for\nLowest Tweet for 20 Images \n(higher is better)")
+print(p)
+
+
+```
+
+###3. Would users that post more image tweets produce more interesting collages? 
+
+Get a listing of each trend’s tweets, with usernames. Sort each trend/time by highest
+contributing user and graph. Pull the high posting user’s associated images (for each
+trend, possibly in total) and process.
+
+However, just because a trend has a lot of pictures, doesn't mean the pictures are interesting, or unique. There's a lot of retweeting, so lets find the most unique pictures for each trend, and we'll look at that.
+
+```{r echo=FALSE}
+
+u <- ddply(trends, c("author"),
+           summarize,
+           total_tweet_pics = length(image_url),
+           unique_trends = length(unique(trend_name)),
+           unique_pictures = length(unique(image_url)))
+
+um <- u[order(u$total_tweet_pics, decreasing=TRUE),]
+
+# Sanity check: print most image posting authors that are more unique image posting
+um <- head(um,100)
+uu <- um[order(um$unique_pictures, decreasing=TRUE),]
+head(uu, 10)
+
+
+# Now try to scale and cluster the multi-demensional data
+uclus <- um
+
+# scale the dimensions
+uclus.scale <- scale(uclus[,2:4])
+rownames(uclus.scale) <- um$author
+
+# try clustering
+uclus.dist <- dist(uclus.scale)
+uclus.pam = pam(uclus.dist, 4)
+
+# It sort of works, we can pretty easily see the outliers, people who are 
+# both top posters in volume, and top posters in uniqueness.
+clusplot(uclus.pam, labels=2, main="k-medoid clustering of authors into 4 groups")
+#silo = silhouette(uclus.pam, uclus.dist)
+#plot(silo)
+
+```
+
+###4. Does a user’s location matter? Are colleges that are produced from images posted from certain locations more interesting than those from other locations?
+
+Get a listing of all trend/time’s tweet metadata, specifically coordinates. Ideally, there
+will be enough users with coordinates to populate a map visualization of some kind. If not, there should be enough images with coordinate data present (vs. not) to be able to get their associated images and process.
+
+```{r echo=FALSE}
+trend_coords = dbGetQuery(con, "select * from trends, pictures 
+                          where trends.id = pictures.trend_id 
+                          and coordinates not null 
+                          and coordinates != '' 
+                          and coordinates != '[0.0, 0.0]'")
+
+get_coords <- function(coords) {
+  result = str_match(coords, "^\\[(.*?), (.*?)\\]$")
+  return(c(result[1,2], result[1,3]))
+}
+
+tc <- ddply(trend_coords, c("author"),
+          summarize,
+          total_tweet_pics = length(image_url),
+          unique_tweet_pics = length(unique(image_url)),
+          long = as.numeric(as.character(get_coords(coordinates)[1])),
+          lat = as.numeric(as.character(get_coords(coordinates)[2])))
+
+tc <- tc[order(tc$total_tweet_pics, decreasing=TRUE),]
+head(tc,10)
+
+world <- map_data("world")
+p <- ggplot() +
+  geom_polygon( data=world, aes(x=long, y=lat, group = group),colour="white", fill="grey10" ) +
+  geom_point(data=tc, aes(x=long,y=lat, size=total_tweet_pics), color="red", alpha=I(8/10)) +
+  scale_fill_discrete(guide = guide_legend(reverse=TRUE))
+p
+
+```

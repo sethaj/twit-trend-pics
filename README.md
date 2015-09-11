@@ -1,12 +1,7 @@
 # twit-trend-pics
 
-# twit-trend-pics
+This project builds off of https://github.com/sethaj/bigpicture-py using R to analyze data from twitter taken over time to build collage images.
 
-After getting the current trends from twitter, 
-you obviously want to see the images that were posted for those trends, 
-on that day, 
-so you won't miss a justin bieber picture.
-
-Daily pictures: http://saj.me:8000/
+Currenly still running tweepy-trend-pics.py standalone getting images from popular twitter trends, pictures at: http://saj.me:8000/
 
 
